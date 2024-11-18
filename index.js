@@ -80,7 +80,6 @@ async function run() {
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = Math.round(price * 100);
-      console.log('hello', price, amount);
       // Create a PaymentIntent with the order amount and currency
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,

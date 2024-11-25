@@ -1,27 +1,34 @@
-const express = require('express');
-const bodyParser = require("body-parser");
-const app = express();
-const cors = require('cors');
-// const jwt = require('jsonwebtoken')
 require('dotenv').config();
+const express = require('express');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const bodyParser = require("body-parser");
+const cors = require('cors');
+const cookieParser = require("cookie-parser");
+const app = express();
+
 const axios = require('axios');
 
 // middleware
-app.use(cors()); // Frontend URL
+app.use(cors({ origin: "http://localhost:3000", credentials: true })); // Adjust for frontend URL
 app.use(express())
 app.use(express.json());
 app.use(bodyParser.json());
+app.use(cookieParser());
 app.use(express.static("public"));
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-const port = process.env.PORT || 5000; // Choose a port for your server
+const port = process.env.PORT || 5001; // Choose a port for your server
 
-// Replace this with your Bitcoin address
-const bitcoinAddress = '1Aw8JJXan2aYfUMWx9NVDzGrLJdKG4viSD';
+const crypto = require("crypto");
+const secret = crypto.randomBytes(64).toString("hex");
+console.log("JWT Secret:", secret);
+const SECRET_KEY = process.env.SECRET_KEY;
 
 // mongoDb dataBase setUp***
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xjpgufh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.xjpgufh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.wrgil.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
@@ -35,14 +42,28 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-
     const usersCollection = client.db('decentMeds').collection('users')
     const paymentCollection = client.db('decentMeds').collection('paymentUser')
+
+
+    // JWT post
+    app.post('/jwt', (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET,
+        { expiresIn: '5h' })
+      res.send({ token })
+    })
+
 
     app.get('/', async (req, res) => {
       res.send('hello server is running')
     })
-    // Stripe payment gateway database start
+
+
+    app.get('/users', async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result)
+    })
 
     app.get('/payments-history', async (req, res) => {
       const result = await paymentCollection.find().toArray();
@@ -55,15 +76,20 @@ async function run() {
       res.send(result)
     })
 
+
     // user related apis
-    app.get('/users', async (req, res) => {
+    app.get('/api/register', async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     })
 
-    // users data insert
+    // users data insert before code hide now
     app.post('/users', async (req, res) => {
-      const totalUsers = req.body;
+      const { name, email, password, role } = req.body;
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      const totalUsers = { name, email, password: hashedPassword, role };
+      console.log(totalUsers, 20222);
       const query = { email: totalUsers?.email }
       const existingUser = await usersCollection.findOne(query)
       if (existingUser) {
@@ -76,7 +102,10 @@ async function run() {
       console.log(result);
     })
 
+
+
     // Stripe payment gateway
+
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = Math.round(price * 100);
@@ -99,7 +128,7 @@ async function run() {
     app.post('/payments', async (req, res) => {
       const paymentDetails = req.body;
 
-// It is function already onetime payment successful but try second time pay then show already payment done
+      // It is function already onetime payment successful but try second time pay then show already payment done
       // const query = {
       //   $and: [
       //     { email: paymentDetails.email},
